@@ -1,1 +1,1 @@
-web: gunicorn app:app --timeout 180 --log-file=-
+web: gunicorn app:app --timeout 300 --graceful-timeout 180 --log-file=-
