@@ -1,9 +1,9 @@
-#!/home/prilog/.pyenv/versions/3.6.9/bin/python
 # -*- coding: utf-8 -*-
-from flask import Flask, render_template, request, session, redirect
+from flask import Flask, render_template, request, session, redirect, jsonify
 import numpy as np
 import os
 import re
+import traceback
 from pytube import YouTube
 import time as tm
 import cv2
@@ -190,11 +190,11 @@ ERROR_BAD_URL = 1
 ERROR_TOO_LONG = 2
 ERROR_NOT_SUPPORTED = 3
 ERROR_CANT_GET_MOVIE = 4
+ERROR_REQUIRED_PARAM = 5
 
 stream_dir = "tmp/"
 if not os.path.exists(stream_dir):
     os.mkdir(stream_dir)
-
 
 def search(youtube_id):
     # ID部分の取り出し
@@ -209,6 +209,7 @@ def search(youtube_id):
     try:
         yt = YouTube(youtube_url)
     except:
+        print(traceback.format_exc())
         return None, None, None, None, ERROR_CANT_GET_MOVIE
 
     movie_thumbnail = yt.thumbnail_url
@@ -430,7 +431,7 @@ def analyze_damage_frame(frame, roi, damage):
 app = Flask(__name__)
 app.config.from_object(__name__)
 app.config['SECRET_KEY'] = 'zJe09C5c3tMf5FnNL09C5e6SAzZuY'
-
+app.config['JSON_AS_ASCII'] = False
 
 @app.route('/', methods=['GET', 'POST'])
 def predicts():
@@ -511,6 +512,59 @@ def result():
     else:
         return redirect("/")
 
+@app.route('/rest/analyze', methods=['POST', 'GET'])
+def remoteAnalyze():
+    status = NO_ERROR
+    msg = "OK"
+    result = {}
+
+    ret = {}
+    ret["result"] = result
+    Url = ""
+    if request.method == 'POST':
+        if "Url" not in request.form:
+            status = ERROR_REQUIRED_PARAM
+            msg = "必須パラメータがありません"
+
+            ret["msg"] = msg
+            ret["status"] = status
+            return jsonify(ret)
+        else:
+            Url = request.form['Url']
+
+    elif request.method == 'GET':
+        if "Url" not in request.args:
+            status = ERROR_REQUIRED_PARAM
+            msg = "必須パラメータがありません"
+
+            ret["msg"] = msg
+            ret["status"] = status
+            return jsonify(ret)
+        else:
+            Url = request.args.get('Url')
+
+    # youtube動画検索/検証
+    path, title, length, thumbnail, url_result = search(Url)
+    status = url_result
+    if url_result is ERROR_BAD_URL:
+        msg = "URLはhttps://www.youtube.com/watch?v=...の形式でお願いします"
+    elif url_result is ERROR_TOO_LONG:
+        msg = "動画時間が長すぎるため、解析に対応しておりません"
+    elif url_result is ERROR_NOT_SUPPORTED:
+        msg = "非対応の動画です。「720p 1280x720」の一部の動画に対応しております"
+    elif url_result is ERROR_CANT_GET_MOVIE:
+        msg = "動画の取得に失敗しました。もう一度入力をお願いします"
+    else :
+        # TL解析
+        time_line, time_data, total_damage = analyze_movie(path)
+        result["total_damage"] = total_damage
+        result["timeline"] = time_line
+        result["timeline_txt"] = "\r\n".join(time_line)
+        result["process_time"] = time_data
+
+    ret["msg"] = msg
+    ret["status"] = status
+    return jsonify(ret)
 
 if __name__ == "__main__":
     app.run()

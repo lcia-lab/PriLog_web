@@ -2,3 +2,5 @@
 /tmp/
 *.mp4
 /env/
+__pycache__
+.vscode
