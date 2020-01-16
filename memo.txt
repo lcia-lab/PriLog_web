@@ -1,8 +1,9 @@
 cv2.matchTemplateの改良余地あり
 ⇒完全一致でしか判定できないため。
-　特徴点検出 https://www.cresco.co.jp/blog/entry/5504/
+特徴点検出 https://www.cresco.co.jp/blog/entry/5504/
             https://qiita.com/fukuit/items/546f19d2abf98eccd3e7   (python)
             https://dronebiz.net/tech/opencv/matching
 
 cv2を使う前の前処理を加える
 ⇒余白(黒帯)の除去、アス比修正
+     https://kkobayashi-a.hatenablog.com/entry/20181021/p1
