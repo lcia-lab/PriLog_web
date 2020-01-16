@@ -288,6 +288,7 @@ def analyze_movie(movie_path):
                     if menu_check is False:
                         menu_check, menu_loc = analyze_menu_frame(work_frame, menu_data, MENU_ROI)
                         if menu_check is True:
+                            # 何やってるか調べる
                             loc_diff = np.array(MENU_LOC) - np.array(menu_loc)
                             roi_diff = (loc_diff[0], loc_diff[1], loc_diff[0], loc_diff[1])
                             min_roi = np.array(MIN_ROI) - np.array(roi_diff)
@@ -339,21 +340,58 @@ def analyze_movie(movie_path):
 
 
 def edit_frame(frame):
+    """
+    フレーム前処理
+
+    下記を行う
+    ・グレースケール
+    ・閾値による2値化
+    ・色調反転
+
+    """
     work_frame = frame
 
+    # グレースケール
     work_frame = cv2.cvtColor(work_frame, cv2.COLOR_RGB2GRAY)
+    # 2値化
     work_frame = cv2.threshold(work_frame, 200, 255, cv2.THRESH_BINARY)[1]
+    # 反転
     work_frame = cv2.bitwise_not(work_frame)
 
     return work_frame
 
 
 def analyze_ub_frame(frame, roi, time_min, time_10sec, time_sec, ub_data, characters_find):
+    """
+    UB検出
+
+    parameter
+    ======================
+    frame: frame
+        対象フレーム
+    roi: roi
+        対象の矩形(x1, y1, x2, y2)
+    time_min: string
+        分桁
+    time_10sec: string
+        10秒桁
+    time_sec: string
+        1秒桁
+    ub_data: UBモデル
+        UBテンプレート
+    characters_find: list
+        検出キャラクター
+
+    return
+    ==================
+    string: 一致したした場合：数値文字列 or 未一致の場合：現在値
+    """
     analyze_frame = frame[roi[1]:roi[3], roi[0]:roi[2]]
 
     characters_num = len(characters)
 
     if len(characters_find) < 5:
+        # キャラクター5人を見つけるまで、すべてのキャラクターのUB判定を行う。
         for j in range(characters_num):
             result_temp = cv2.matchTemplate(analyze_frame, characters_data[j], cv2.TM_CCOEFF_NORMED)
             min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(result_temp)
@@ -364,6 +402,7 @@ def analyze_ub_frame(frame, roi, time_min, time_10sec, time_sec, ub_data, charac
 
                 return FOUND
     else:
+        # 5人見つかった場合は、そのキャラのみのUB判定で時間を省略する
         for j in range(5):
             result_temp = cv2.matchTemplate(analyze_frame, characters_data[characters_find[j]], cv2.TM_CCOEFF_NORMED)
             min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(result_temp)
@@ -376,6 +415,29 @@ def analyze_ub_frame(frame, roi, time_min, time_10sec, time_sec, ub_data, charac
 
 
 def analyze_timer_frame(frame, roi, data_num, time_data):
+    """
+    残り時間検出
+
+    下記の検出に利用する
+    ・1分桁
+    ・10秒桁
+    ・1秒桁
+
+    parameter
+    ======================
+    frame: frame
+        対象フレーム
+    roi: roi
+        対象の矩形(x1, y1, x2, y2)
+    data_num: int
+        数値の個数 (分：2 (0~1) 10秒:6 (0~5) 1秒：10 (0~9))
+    time_data: string
+        現在値
+
+    return
+    ==================
+    string: 一致したした場合：数値文字列 or 未一致の場合：現在値
+    """
     analyze_frame = frame[roi[1]:roi[3], roi[0]:roi[2]]
 
     for j in range(data_num):
@@ -388,6 +450,22 @@ def analyze_timer_frame(frame, roi, data_num, time_data):
 
 
 def analyze_menu_frame(frame, menu, roi):
+    """
+    メニューフレーム判定
+
+    parameter
+    ======================
+    frame: frame
+        対象フレーム
+    menu: ndarray
+        メニューテンプレート
+    roi: roi
+        対象の矩形(x1, y1, x2, y2)
+    
+    return
+    ======================
+    boolean: 検出：true 未検出: false, loc
+    """
     analyze_frame = frame[roi[1]:roi[3], roi[0]:roi[2]]
 
     result_temp = cv2.matchTemplate(analyze_frame, menu, cv2.TM_CCOEFF_NORMED)
@@ -399,6 +477,22 @@ def analyze_menu_frame(frame, menu, roi):
 
 
 def analyze_damage_frame(frame, roi, damage):
+    """
+    ダメージフレーム数値検出
+
+    parameter
+    ======================
+    frame: frame
+        対象フレーム
+    menu: ndarray
+        ダメージテンプレート
+    roi: roi
+        対象の矩形(x1, y1, x2, y2)
+    
+    return
+    ======================
+    string: ダメージ数値
+    """
     analyze_frame = frame[roi[1]:roi[3], roi[0]:roi[2]]
 
     analyze_frame = cv2.cvtColor(analyze_frame, cv2.COLOR_BGR2HSV)
