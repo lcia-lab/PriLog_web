@@ -91,9 +91,6 @@ ERROR_REQUIRED_PARAM = 5
 
 stream_dir = "/tmp/"
 
-app = Flask(__name__)
-app.config['JSON_AS_ASCII'] = False
-
 def search(youtube_id):
     # ID部分の取り出し
     work_id = re.findall('.*watch(.{14})', youtube_id)
