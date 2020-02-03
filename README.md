@@ -13,12 +13,16 @@ https://cloud.google.com/sdk/docs/?hl=ja
 
 ## GAE上で動かす
 ① gcloud app deploy
+
 ② y を入力
+
 ③ deploy完了まで待機
 
 ## Cloud Functions上で動かす
 ① gcloud functions deploy remoteAnalyze --runtime python37 --trigger-http --timeout 300 --region asia-northeast1 --memory 2048MB
+
 ② y を入力
+
 ③ deploy完了まで待機
 
 # Note
