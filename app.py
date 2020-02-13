@@ -7,6 +7,8 @@ import traceback
 from pytube import YouTube
 import time as tm
 import cv2
+import json
+import urllib.parse
 import characters as cd
 import after_caluculation as ac
 
@@ -49,7 +51,7 @@ FRAME_COLS = 1280
 FRAME_ROWS = 720
 
 UB_ROI = (490, 98, 810, 132)
-MIN_ROI = (1073, 22, 1089, 44)
+MIN_ROI = (1070, 22, 1089, 44)
 TEN_SEC_ROI = (1091, 22, 1107, 44)
 ONE_SEC_ROI = (1105, 22, 1121, 44)
 MENU_ROI = (1100, 0, 1280, 90)
@@ -88,19 +90,59 @@ ERROR_TOO_LONG = 2
 ERROR_NOT_SUPPORTED = 3
 ERROR_CANT_GET_MOVIE = 4
 ERROR_REQUIRED_PARAM = 5
+ERROR_PROCESS_FAILED = 6
 
-stream_dir = "/tmp/"
+stream_dir = "/tmp/stream/"
+cache_dir = "/tmp/cache/"
+pending_dir = "/tmp/pending/"
+
+def cache_check(youtube_id):
+    # キャッシュ有無の確認
+    try:
+        return json.load(open(cache_dir + urllib.parse.quote(youtube_id) + '.json'))
+    except FileNotFoundError:
+        return False
+
+
+def pending_append(path):
+    # 解析中のIDを保存
+    try:
+        with open(path, mode='w'):
+            pass
+    except FileExistsError:
+        pass
+
+    return
+
+
+def clear_path(path):
+    # ファイルの削除
+    try:
+        os.remove(path)
+    except PermissionError:
+        pass
+    except FileNotFoundError:
+        pass
+
+    return
+
+
+def get_youtube_id(url):
+    # ID部分の取り出し
+    work_id = re.findall('.*watch(.{14})', url)
+    if not work_id:
+        work_id = re.findall('.youtu.be/(.{11})', url)
+        if not work_id:
+            return False
+
+    ret = work_id[0].replace('?v=', '')
+
+    return ret
+
 
 def search(youtube_id):
-    # ID部分の取り出し
-    work_id = re.findall('.*watch(.{14})', youtube_id)
-    if not work_id:
-        work_id = re.findall('.youtu.be/(.{11})', youtube_id)
-        if not work_id:
-            return None, None, None, None, ERROR_BAD_URL
-        work_id[0] = '?v=' + work_id[0]
-    # Youtubeから動画を保存し保存先パスを返す
-    youtube_url = 'https://www.youtube.com/watch' + work_id[0]
+    # youtubeの動画を検索し取得
+    youtube_url = 'https://www.youtube.com/watch?v=' + youtube_id
     try:
         yt = YouTube(youtube_url)
     except:
@@ -136,9 +178,9 @@ def analyze_movie(movie_path):
 
     if frame_width != int(FRAME_COLS) or frame_height != int(FRAME_ROWS):
         video.release()
-        os.remove(movie_path)
+        clear_path(movie_path)
 
-        return None, None, None, None
+        return None, None, None, None, ERROR_NOT_SUPPORTED
 
     n = 0.34  # n秒ごと*
     ub_interval = 0
@@ -227,7 +269,7 @@ def analyze_movie(movie_path):
                             break
 
     video.release()
-    os.remove(movie_path)
+    clear_path(movie_path)
 
     # TLに対する後処理
     debuff_value = ac.make_ub_value_list(ub_data_value, characters_find)
@@ -236,7 +278,7 @@ def analyze_movie(movie_path):
     time_data.append("動画時間 : {:.3f}".format(frame_count / frame_rate) + "  sec")
     time_data.append("処理時間 : {:.3f}".format(time_result) + "  sec")
 
-    return ub_data, time_data, total_damage, debuff_value
+    return ub_data, time_data, total_damage, debuff_value, NO_ERROR
 
 
 def edit_frame(frame):
@@ -305,6 +347,7 @@ def analyze_ub_frame(frame, roi, time_min, time_10sec, time_sec, ub_data, ub_dat
     else:
         # 5人見つかった場合は、そのキャラのみのUB判定で時間を省略する
         for j in range(5):
+            # 5キャラのみの探索
             result_temp = cv2.matchTemplate(analyze_frame, characters_data[characters_find[j]], cv2.TM_CCOEFF_NORMED)
             min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(result_temp)
             if max_val > UB_THRESH:
@@ -426,6 +469,7 @@ def analyze_damage_frame(frame, roi, damage):
 
 
 def analyze_anna_icon_frame(frame, roi, characters_find):
+    # アンナの有無を確認　UBを使わない場合があるため
     analyze_frame = frame[roi[1]:roi[3], roi[0]:roi[2]]
 
     icon_num = len(icon_data)
@@ -436,6 +480,8 @@ def analyze_anna_icon_frame(frame, roi, characters_find):
         if max_val > ICON_THRESH:
             characters_find.append(characters.index('アンナ'))
 
+    return
+
 
 app = Flask(__name__)
 app.config.from_object(__name__)
@@ -445,13 +491,30 @@ app.config['JSON_AS_ASCII'] = False
 @app.route('/', methods=['GET', 'POST'])
 def predicts():
     if request.method == 'POST':
-        Url = (request.form["Url"])
+        url = (request.form["Url"])
 
-        path, title, length, thumbnail, url_result = search(Url)
-        if url_result is ERROR_BAD_URL:
+        # urlからid部分の抽出
+        youtube_id = get_youtube_id(url)
+        if youtube_id is False:
             error = "URLはhttps://www.youtube.com/watch?v=...の形式でお願いします"
             return render_template('index.html', error=error)
-        elif url_result is ERROR_TOO_LONG:
+
+        cache = cache_check(youtube_id)
+        if cache is not False:
+            title, time_line, time_data, total_damage, debuff_value = cache
+            if time_line:
+                debuff_dict = None
+                if debuff_value:
+                    debuff_dict = ({key: val for key, val in zip(time_line, debuff_value)})
+                return render_template('result.html', title=title, timeLine=time_line,
+                                       timeData=time_data, totalDamage=total_damage, debuffDict=debuff_dict)
+            else:
+                error = "非対応の動画です。「720p 1280x720」の一部の動画に対応しております"
+                return render_template('index.html', error=error)
+
+        path, title, length, thumbnail, url_result = search(youtube_id)
+
+        if url_result is ERROR_TOO_LONG:
             error = "動画時間が長すぎるため、解析に対応しておりません"
             return render_template('index.html', error=error)
         elif url_result is ERROR_NOT_SUPPORTED:
@@ -462,41 +525,93 @@ def predicts():
             return render_template('index.html', error=error)
         session['path'] = path
         session['title'] = title
-        length = int(int(length) / 4) + 3
+        session['youtube_id'] = youtube_id
+        length = int(int(length) / 8) + 3
 
         return render_template('analyze.html', title=title, length=length, thumbnail=thumbnail)
 
     elif request.method == 'GET':
-        path = session.get('path')
-        session.pop('path', None)
+        if 'v' in request.args:  # ?v=YoutubeID 形式のGETであればリザルト返却
+            youtube_id = request.args.get('v')
+            if re.fullmatch(r'^([a-zA-Z0-9_-]{11})$', youtube_id):
+                cache = cache_check(youtube_id)
+                if cache is not False:
+                    title, time_line, time_data, total_damage, debuff_value = cache
+                    if time_line:
+                        debuff_dict = None
+                        if debuff_value:
+                            debuff_dict = ({key: val for key, val in zip(time_line, debuff_value)})
+                        data_url = "https://prilog.jp/?v=" + youtube_id
+                        data_txt = title + "\n"
+                        if total_damage:
+                            data_txt += total_damage + "\n"
+                        data_txt += "PriLog Web"
+                        return render_template('result.html', title=title, timeLine=time_line,
+                                               timeData=time_data, totalDamage=total_damage, debuffDict=debuff_dict,
+                                               data_txt=data_txt, data_url=data_url)
+                    else:
+                        error = "非対応の動画です。「720p 1280x720」の一部の動画に対応しております"
+                        return render_template('index.html', error=error)
+                else:  # キャッシュが存在しない場合は解析
+                    path, title, length, thumbnail, url_result = search(youtube_id)
 
-        error = None
-        if path is ERROR_NOT_SUPPORTED:
-            error = "非対応の動画です。「720p 1280x720」の一部の動画に対応しております"
+                    if url_result is ERROR_TOO_LONG:
+                        error = "動画時間が長すぎるため、解析に対応しておりません"
+                        return render_template('index.html', error=error)
+                    elif url_result is ERROR_NOT_SUPPORTED:
+                        error = "非対応の動画です。「720p 1280x720」の一部の動画に対応しております"
+                        return render_template('index.html', error=error)
+                    elif url_result is ERROR_CANT_GET_MOVIE:
+                        error = "動画の取得に失敗しました。もう一度入力をお願いします"
+                        return render_template('index.html', error=error)
+                    session['path'] = path
+                    session['title'] = title
+                    session['youtube_id'] = youtube_id
+                    length = int(int(length) / 4) + 3
 
-        elif path is not None:
-            if os.path.exists(path):
-                try:
-                    os.remove(path)
-                except PermissionError:
-                    print("PermissionError occur")
+                    return render_template('analyze.html', title=title, length=length, thumbnail=thumbnail)
+            else:  # prilog.jp/(YoutubeID)に該当しないリクエスト
+                error = "不正なリクエストです"
+                return render_template('index.html', error=error)
+        else:
+            path = session.get('path')
+            session.pop('path', None)
+            session.pop('title', None)
+            session.pop('youtube_id', None)
 
-        return render_template('index.html', error=error)
+            error = None
+            if path is ERROR_NOT_SUPPORTED:
+                error = "非対応の動画です。「720p 1280x720」の一部の動画に対応しております"
+
+            elif path is not None:
+                clear_path(path)
+
+            return render_template('index.html', error=error)
 
 
 @app.route('/analyze', methods=['GET', 'POST'])
 def analyze():
     path = session.get('path')
+    title = session.get('title')
+    youtube_id = session.get('youtube_id')
     session.pop('path', None)
 
     if request.method == 'GET' and path is not None:
-        time_line, time_data, total_damage, debuff_value = analyze_movie(path)
-        if time_line is not None:
+        # TL解析
+        time_line, time_data, total_damage, debuff_value, status = analyze_movie(path)
+
+        # キャッシュ保存
+        cache = cache_check(youtube_id)
+        if cache is False:
+            json.dump([title, time_line, False, total_damage, debuff_value],
+                      open(cache_dir + urllib.parse.quote(youtube_id) + '.json', 'w'))
+
+        if status is NO_ERROR:
+            # 解析が正常終了ならば結果を格納
             session['time_line'] = time_line
             session['time_data'] = time_data
             session['total_damage'] = total_damage
             session['debuff_value'] = debuff_value
-            session.pop('checking', None)
             return render_template('analyze.html')
         else:
             session['path'] = ERROR_NOT_SUPPORTED
@@ -512,15 +627,26 @@ def result():
     time_data = session.get('time_data')
     total_damage = session.get('total_damage')
     debuff_value = session.get('debuff_value')
+    youtube_id = session.get('youtube_id')
     session.pop('title', None)
     session.pop('time_line', None)
     session.pop('time_data', None)
     session.pop('total_damage', None)
+    session.pop('debuff_value', None)
+    session.pop('youtube_id', None)
 
     if request.method == 'GET' and time_line is not None:
-        debuff_dict = ({key: val for key, val in zip(time_line, debuff_value)})
+        debuff_dict = None
+        if debuff_value:
+            debuff_dict = ({key: val for key, val in zip(time_line, debuff_value)})
+        data_url = "https://prilog.jp/?v=" + youtube_id
+        data_txt = title + "\n"
+        if total_damage:
+            data_txt += total_damage + "\n"
+        data_txt += "PriLog Web"
         return render_template('result.html', title=title, timeLine=time_line,
-                               timeData=time_data, totalDamage=total_damage, debuffDict=debuff_dict)
+                               timeData=time_data, totalDamage=total_damage, debuffDict=debuff_dict,
+                               data_txt=data_txt, data_url=data_url)
     else:
         return redirect("/")
 
@@ -533,7 +659,7 @@ def remoteAnalyze():
 
     ret = {}
     ret["result"] = result
-    Url = ""
+    url = ""
     if request.method == 'POST':
         if "Url" not in request.form:
             status = ERROR_REQUIRED_PARAM
@@ -543,7 +669,7 @@ def remoteAnalyze():
             ret["status"] = status
             return jsonify(ret)
         else:
-            Url = request.form['Url']
+            url = request.form['Url']
 
     elif request.method == 'GET':
         if "Url" not in request.args:
@@ -554,27 +680,111 @@ def remoteAnalyze():
             ret["status"] = status
             return jsonify(ret)
         else:
-            Url = request.args.get('Url')
+            url = request.args.get('Url')
 
-    # youtube動画検索/検証
-    path, title, length, thumbnail, url_result = search(Url)
-    status = url_result
-    if url_result is ERROR_BAD_URL:
+    # キャッシュ確認
+    youtube_id = get_youtube_id(url)
+    if youtube_id is False:
+        # 不正なurlの場合
+        status = ERROR_BAD_URL
         msg = "URLはhttps://www.youtube.com/watch?v=...の形式でお願いします"
-    elif url_result is ERROR_TOO_LONG:
-        msg = "動画時間が長すぎるため、解析に対応しておりません"
-    elif url_result is ERROR_NOT_SUPPORTED:
-        msg = "非対応の動画です。「720p 1280x720」の一部の動画に対応しております"
-    elif url_result is ERROR_CANT_GET_MOVIE:
-        msg = "動画の取得に失敗しました。もう一度入力をお願いします"
-    else :
-        # TL解析
-        time_line, time_data, total_damage, debuff_value = analyze_movie(path)
-        result["total_damage"] = total_damage
-        result["timeline"] = time_line
-        result["timeline_txt"] = "\r\n".join(time_line)
-        result["process_time"] = time_data
-        result["debuff_value"] = debuff_value
+    else:
+        # 正常なurlの場合
+        cache = cache_check(youtube_id)
+
+        if cache is not False:
+            # キャッシュ有りの場合
+
+            # キャッシュを返信
+            title, time_line, time_data, total_damage, debuff_value = cache
+            if time_line:
+                result["title"] = title
+                result["total_damage"] = total_damage
+                result["timeline"] = time_line
+                result["process_time"] = time_data
+                result["debuff_value"] = debuff_value
+                result["timeline_txt"] = "\r\n".join(time_line)
+                if debuff_value:
+                    result["timeline_txt_debuff"] = "\r\n".join(list(
+                        map(lambda x: "↓{} {}".format(str(debuff_value[x[0]][0:]).rjust(3, " "), x[1]),
+                            enumerate(time_line))))
+            else:
+                status = ERROR_NOT_SUPPORTED
+                msg = "非対応の動画です。「720p 1280x720」の一部の動画に対応しております"
+        else:  # キャッシュ無しの場合
+            # 解析中かどうかを確認
+            pending_path = pending_dir + str(youtube_id)
+            pending = os.path.exists(pending_path)
+            if pending:  # 既に解析中の場合
+                while True:  # 既に解析中の場合解析終了を監視
+                    pending = os.path.exists(pending_path)
+                    if pending:
+                        tm.sleep(1)
+                        continue
+                    else:  # 既に開始されている解析が完了したら、そのキャッシュJSONを返す
+                        cache = cache_check(youtube_id)
+                        if cache is not False:
+                            title, time_line, time_data, total_damage, debuff_value = cache
+                            if time_line:
+                                result["title"] = title
+                                result["total_damage"] = total_damage
+                                result["timeline"] = time_line
+                                result["process_time"] = time_data
+                                result["debuff_value"] = debuff_value
+                                result["timeline_txt"] = "\r\n".join(time_line)
+                                if debuff_value:
+                                    result["timeline_txt_debuff"] = "\r\n".join(list(
+                                        map(lambda x: "↓{} {}".format(str(debuff_value[x[0]][0:]).rjust(3, " "), x[1]),
+                                            enumerate(time_line))))
+                            break
+                        else:  # キャッシュ未生成の場合
+                            # キャッシュを書き出してから解析キューから削除されるため、本来起こり得ないはずのエラー
+                            status = ERROR_PROCESS_FAILED
+                            msg = "解析結果の取得に失敗しました"
+                            break
+
+            else:  # 既に解析中ではない場合
+                # 解析キューに登録
+                pending_append(pending_path)
+
+                # youtube動画検索/検証
+                path, title, length, thumbnail, url_result = search(youtube_id)
+                status = url_result
+                if url_result is ERROR_TOO_LONG:
+                    msg = "動画時間が長すぎるため、解析に対応しておりません"
+                elif url_result is ERROR_NOT_SUPPORTED:
+                    msg = "非対応の動画です。「720p 1280x720」の一部の動画に対応しております"
+                elif url_result is ERROR_CANT_GET_MOVIE:
+                    msg = "動画の取得に失敗しました。もう一度入力をお願いします"
+                else:
+                    # TL解析
+                    time_line, time_data, total_damage, debuff_value, analyze_result = analyze_movie(path)
+                    status = analyze_result
+                    # キャッシュ保存
+                    cache = cache_check(youtube_id)
+                    if cache is False:
+                        json.dump([title, time_line, False, total_damage, debuff_value],
+                                  open(cache_dir + urllib.parse.quote(youtube_id) + '.json', 'w'))
+
+                    if analyze_result is NO_ERROR:
+                        # 解析が正常終了ならば結果を格納
+                        result["title"] = title
+                        result["total_damage"] = total_damage
+                        result["timeline"] = time_line
+                        result["process_time"] = time_data
+                        result["debuff_value"] = debuff_value
+
+                        if time_line:
+                            result["timeline_txt"] = "\r\n".join(time_line)
+                            if debuff_value:
+                                result["timeline_txt_debuff"] = "\r\n".join(list(
+                                    map(lambda x: "↓{} {}".format(str(debuff_value[x[0]][0:]).rjust(3, " "), x[1]),
+                                        enumerate(time_line))))
+
+                    else:
+                        msg = "非対応の動画です。「720p 1280x720」の一部の動画に対応しております"
+
+                clear_path(pending_path)
 
     ret["msg"] = msg
     ret["status"] = status
@@ -582,4 +792,4 @@ def remoteAnalyze():
 
 
 if __name__ == "__main__":
-    app.run()
+    app.run(threaded=True)
