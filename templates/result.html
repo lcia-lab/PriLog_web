@@ -3,11 +3,20 @@
   <meta charset="utf-8"/>
   <meta http-equiv="X-UA-Compatible" content="IE=edge" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <meta name="apple-mobile-web-app-capable" content="yes">
   <title>PriLog</title>
+  <meta name="description" content="プリコネのクランバトルのタイムラインをYouTubeの動画から自動解析します。" />
+  <meta property="og:url" content="https://prilog.jp/" />
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="タイムライン解析結果" />
+  <meta property="og:description" content="こちらのリンクよりタイムラインをご確認頂けます。">
+  <meta property="og:image" content="https://prilog.jp/static/twitter_summary.jpg" />
+  <meta name="twitter:card" content="summary" />
+  <meta name="twitter:site" content="@PriLog_R" />
+  <meta property="og:site_name" content="PriLog" />
+  <meta property="og:locale" content="ja_JP" />
   <link rel="stylesheet" type="text/css" href="/static/reset.css">
-  <link rel="stylesheet" media="(min-width: 850px)" type="text/css" href="/static/base.css">
-  <link rel="stylesheet" media="(max-width: 850px)" type="text/css" href="/static/base_mobile.css">
+  <link rel="stylesheet" media="(min-width: 850px)" type="text/css" href="/static/base.css?20200214">
+  <link rel="stylesheet" media="(max-width: 850px)" type="text/css" href="/static/base_mobile.css?20200214">
   <link rel="shortcut icon" href="/static/favicon.ico">
   <link rel="apple-touch-icon" sizes="180x180" href="/static/apple-touch-icon.png">
 </head>
@@ -84,7 +93,9 @@
           </div>
         </div>
       </div>
-    <a href="https://twitter.com/share?ref_src=twsrc%5Etfw" data-text="{{data_txt}}" class="twitter-share-button" data-url="{{data_url}}" data-lang="ja" data-show-count="false">Tweet</a>
+      <a class="buttonTwitter" href="https://twitter.com/share?url={{data_url}}&text={{data_txt}}" target="_blank">
+          <img class="tweetIcon" src="/static/twitter_icon.png">
+      </a>
     {% else %}
       <button class="buttonBack" onclick="location.href='/'">戻る</button>
     {% endif %}
@@ -101,5 +112,4 @@
     });
   });
   </script>
-<script async src="https://platform.twitter.com/widgets.js" charset="utf-8"></script>
 </body>
