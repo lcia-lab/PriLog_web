@@ -47,9 +47,11 @@ numbers = [
     "9",
 ]
 
+# 解析可能な解像度
 FRAME_COLS = 1280
 FRAME_ROWS = 720
 
+# 画像認識範囲
 UB_ROI = (490, 98, 810, 132)
 MIN_ROI = (1070, 22, 1089, 44)
 TEN_SEC_ROI = (1091, 22, 1107, 44)
@@ -71,10 +73,12 @@ DAMAGE_NUMBER_ROI = [
     (142, 0, 170, 39)
 ]
 
+# 時刻格納位置
 TIMER_MIN = 2
 TIMER_TEN_SEC = 1
 TIMER_SEC = 0
 
+# 認識判定値
 UB_THRESH = 0.65
 TIMER_THRESH = 0.7
 MENU_THRESH = 0.6
@@ -84,6 +88,7 @@ ICON_THRESH = 0.65
 FOUND = 1
 NOT_FOUND = 0
 
+# エラーリスト
 NO_ERROR = 0
 ERROR_BAD_URL = 1
 ERROR_TOO_LONG = 2
@@ -92,6 +97,9 @@ ERROR_CANT_GET_MOVIE = 4
 ERROR_REQUIRED_PARAM = 5
 ERROR_PROCESS_FAILED = 6
 
+# キャッシュ格納数
+CACHE_NUM = 5
+
 stream_dir = "/tmp/stream/"
 cache_dir = "/tmp/cache/"
 pending_dir = "/tmp/pending/"
@@ -99,7 +107,16 @@ pending_dir = "/tmp/pending/"
 def cache_check(youtube_id):
     # キャッシュ有無の確認
     try:
-        return json.load(open(cache_dir + urllib.parse.quote(youtube_id) + '.json'))
+        cache_path = cache_dir + urllib.parse.quote(youtube_id) + '.json'
+        ret = json.load(open(cache_path))
+        if len(ret) is CACHE_NUM:
+            # キャッシュから取得した値の数が規定値
+            return ret
+        else:
+            # 異常なキャッシュの場合
+            clear_path(cache_path)
+            return False
+
     except FileNotFoundError:
         return False
 
