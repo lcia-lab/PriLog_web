@@ -16,12 +16,32 @@ import common as cm
 import error_list as err
 
 stream_dir = "/tmp/stream/"
+if not os.path.exists(stream_dir):
+    os.mkdir(stream_dir)
+    
 cache_dir = "/tmp/cache/"
+if not os.path.exists(cache_dir):
+    os.mkdir(cache_dir)
+    
 download_dir = "/tmp/download/"
+if not os.path.exists(download_dir):
+    os.mkdir(download_dir)
+    
 dl_queue_dir = "/tmp/download/queue/"
+if not os.path.exists(dl_queue_dir):
+    os.mkdir(dl_queue_dir)
+    
 dl_doing_dir = "/tmp/download/doing/"
+if not os.path.exists(dl_doing_dir):
+    os.mkdir(dl_doing_dir)
+    
 queue_dir = "/tmp/queue/"
+if not os.path.exists(queue_dir):
+    os.mkdir(queue_dir)
+    
 pending_dir = "/tmp/pending/"
+if not os.path.exists(pending_dir):
+    os.mkdir(pending_dir)
 
 app = Flask(__name__)
 app.config.from_object(__name__)
