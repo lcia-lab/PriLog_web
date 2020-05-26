@@ -1,11 +1,10 @@
-# -*- coding: utf-8 -*-
 import cv2
 import numpy as np
 from PIL import Image
 import os, glob
 
 # 画像が保存されているルートディレクトリのパス
-root_dir = "./damage_data"
+root_dir = "../damage_data_4_3"
 # 数値名
 damages = [
     "0",
@@ -42,7 +41,7 @@ def add_sample(cat, fname):
     data = cv2.imread(fname)
     data_hsv = cv2.cvtColor(data, cv2.COLOR_BGR2HSV)
     result = cv2.inRange(data_hsv, np.array([10, 120, 160]), np.array([40, 255, 255]))
-    cv2.imwrite('save_damage_data/ ' + str(cat) + '.png', result)
+    cv2.imwrite('../save_damage_data/ ' + str(cat) + '.png', result)
     X.append(result)
     Y.append(cat)
 
@@ -59,4 +58,4 @@ for idx, cat in enumerate(damages):
 
 X_train, y_train = make_sample(allfiles)
 # データを保存する（データの名前を「damage_data.npy」としている）
-np.save("model/damage_data.npy", X_train)
+np.save("../model/4_3/damage_data_4_3.npy", X_train)
