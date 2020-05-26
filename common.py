@@ -9,7 +9,7 @@
 """
 import os
 import json
-from glob import glob
+import glob
 import urllib.parse
 import app as ap
 import error_list as err
