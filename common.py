@@ -166,7 +166,6 @@ def queue_append(path):
             pass
     except FileExistsError:
         pass
-
     return
 
 
@@ -187,7 +186,6 @@ def pending_append(path):
             pass
     except FileExistsError:
         pass
-
     return
 
 

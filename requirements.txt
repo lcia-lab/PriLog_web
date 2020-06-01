@@ -8,5 +8,5 @@ Pillow==7.0.0
 Werkzeug==0.16.0
 WTForms==2.2.1
 gunicorn==20.0.4
-git+https://github.com/lcia-lab/pytube
+pytube3==9.6.4
 git+https://github.com/lcia-lab/flask
