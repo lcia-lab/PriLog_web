@@ -12,7 +12,6 @@ import json
 import glob
 import urllib.parse
 import app as ap
-import state_list as state
 import datetime
 
 
