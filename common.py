@@ -12,7 +12,7 @@ import json
 import glob
 import urllib.parse
 import app as ap
-import error_list as err
+import state_list as state
 import datetime
 
 
@@ -44,33 +44,20 @@ def save_cache(youtube_id, title, time_line, time_data, total_damage, debuff_val
 
     """
     past_status = cache_status_check(youtube_id)
+    present_status = status
     if past_status is False:
 
-        json.dump([title, time_line, time_data, total_damage, debuff_value, status],
+        json.dump([title, time_line, time_data, total_damage, debuff_value, present_status],
                   open(ap.cache_dir + urllib.parse.quote(youtube_id) + ".json", "w"))
 
-    elif past_status == err.TMP_DONE_IN_SD:
-
-        if status is err.TMP_DONE_IN_SD:
-            status = err.DONE_IN_SD
-
-        json.dump([title, time_line, time_data, total_damage, debuff_value, status],
-                  open(ap.cache_dir + urllib.parse.quote(youtube_id) + ".json", "w"))
-
-    elif past_status == err.TMP_INCOMPLETE_IN_SD:
-
-        if status is err.TMP_INCOMPLETE_IN_SD:
-            status = err.ERR_INCOMPLETE_IN_SD
-
-        json.dump([title, time_line, time_data, total_damage, debuff_value, status],
-                  open(ap.cache_dir + urllib.parse.quote(youtube_id) + ".json", "w"))
     else:
-        status = err.ERR_PERM_UNEXPECTED
+        result, present_status = status_comparison(past_status, status)
+        if result is True:
 
-        json.dump([title, time_line, time_data, total_damage, debuff_value, status],
-                  open(ap.cache_dir + urllib.parse.quote(youtube_id) + ".json", "w"))
+            json.dump([title, time_line, time_data, total_damage, debuff_value, present_status],
+                      open(ap.cache_dir + urllib.parse.quote(youtube_id) + ".json", "w"))
 
-    return status
+    return present_status
 
 
 def cache_check(youtube_id):
@@ -94,9 +81,8 @@ def cache_check(youtube_id):
         if len(ret) is CACHE_ELMS:  # in case of number of cached elements is correct
             title, time_line, time_data, total_damage, debuff_value, past_status = ret
             if past_status // 100 == 3:
-                now = datetime.datetime.today()  # 現在の時刻を取得
-                timestamp = datetime.datetime.fromtimestamp(int(os.path.getmtime(cache_path)))
-                if (now - timestamp).seconds >= 5 * 60:  # 5分経過している3xxは無視する
+
+                if check_pass_time(cache_path, 300):  # through 3xx error if passed 5 minutes
                     return False
                 else:
                     return ret
@@ -105,6 +91,35 @@ def cache_check(youtube_id):
         else:  # in case of number of cached elements is incorrect
             # delete cache
             clear_path(cache_path)
+            return False
+
+    except FileNotFoundError:
+        # not found cache
+        return False
+
+
+def queue_cache_check(youtube_id):
+    """cache check with youtube_id while queue
+
+    search cache and get cache data
+    cache: (6)
+    [title, time_line, time_data, total_damage, debuff_value, status]
+
+    Args:
+        youtube_id (str): user input youtube_id
+
+    Returns:
+        status (int): cache or False
+
+
+    """
+    try:
+        cache_path = ap.cache_dir + urllib.parse.quote(youtube_id) + ".json"
+        ret = json.load(open(cache_path))
+        if len(ret) is CACHE_ELMS:  # in case of number of cached elements is correct
+            return ret
+
+        else:  # in case of number of cached elements is incorrect
             return False
 
     except FileNotFoundError:
@@ -134,12 +149,7 @@ def cache_status_check(youtube_id):
         ret = json.load(open(cache_path))
         if len(ret) is CACHE_ELMS:  # in case of number of cached elements is correct
             past_status = ret[5]
-            if past_status // 100 == 3:
-                # if past status is 3xx, return status to change 4xx.
-                return past_status
-
-            else:
-                return False
+            return past_status
         else:  # in case of number of cached elements is incorrect
             # not found cache
             return False
@@ -147,6 +157,52 @@ def cache_status_check(youtube_id):
     except FileNotFoundError:
         # not found cache
         return False
+
+
+def status_comparison(past, present):
+    """status compares with past and present
+    this function calls if valid cache exists
+
+
+    Args:
+        past (int): past analyze status (should be 3xx)
+        present (int): present analyze status
+
+    Returns:
+        cacheable (boolean): cache is able to make or not
+        set_status (int): chosen status by combination
+
+
+    """
+
+    # past status is 2xx/4xx return confirmed status
+    if past // 100 == 2 or past // 100 == 4:
+        return False, past
+
+    # present status is 2xx/4xx return confirmed status
+    if present // 100 == 2 or present // 100 == 4:
+        return True, present
+
+    # Only 3xx should go below but it dose not matter
+    # past status is 30x and recently 3xx, do not update
+    if not past % 100 // 10 and present % 100 // 10:
+        return False, past
+
+    # past status is 30x and recently 30x, fix as 20x
+    elif not past % 100 // 10 and not present % 100 // 10:
+        return True, present - 100
+
+    # past status is 3xx and recently 30x, yield to try one more time
+    elif not present % 100 // 10:
+        return True, present
+
+    # past status is 3xx and recently 3xx, fix as 4xx
+    elif past % 100 // 10 and present % 100 // 10:
+        return True, present + 100
+
+    # all pattern should be covered on above, but just in case throw exception
+    else:
+        return True, 399
 
 
 def queue_append(path):
@@ -189,7 +245,7 @@ def pending_append(path):
     return
 
 
-def is_path_current(path):
+def is_path_due(path):
     """check path
 
     check path turn
@@ -206,6 +262,8 @@ def is_path_current(path):
         # get list queue file
         directory = os.path.dirname(path)
         fl = glob(directory + "/*")
+        if not fl:
+            return False
 
         # sort time stamp and find oldest queue
         fl.sort(key=lambda x: os.path.getctime(x))
@@ -242,6 +300,34 @@ def is_path_exists(path):
         return False
 
 
+def is_pending_download(margin):
+    """check is download job ready
+
+    check pending timestamp to download available
+    for avoid too many query to YouTube
+
+    Args:
+        margin (int):
+
+    Returns:
+        result (boolean): True: ready to download / False: not ready
+
+
+    """
+    queue_path = ap.dl_pending_dir + "pending"
+
+    result = False
+
+    if os.path.exists(queue_path):
+        if check_pass_time(queue_path, margin):
+            clear_path(queue_path)
+            result = True
+    else:
+        result = True
+
+    return result
+
+
 def watchdog(youtube_id, is_parent, margin, err_type):
     """check is job timeout
 
@@ -267,9 +353,7 @@ def watchdog(youtube_id, is_parent, margin, err_type):
         job_path = queue_path
 
     if os.path.exists(job_path):
-        now = datetime.datetime.today()  # 現在の時刻を取得
-        timestamp = datetime.datetime.fromtimestamp(int(os.path.getmtime(job_path)))
-        if (now - timestamp).seconds >= margin * 60:  # margin分経過しているjobは削除、指定エラーを投げる
+        if check_pass_time(job_path, margin):
             save_cache(youtube_id, "", False, False, False, False, err_type)
             clear_path(job_path)
             if is_parent:
@@ -297,13 +381,66 @@ def watchdog_download(youtube_id, margin):
     result = False
 
     if os.path.exists(queue_path):
-        now = datetime.datetime.today()  # 現在の時刻を取得
-        timestamp = datetime.datetime.fromtimestamp(int(os.path.getmtime(queue_path)))
-        if (now - timestamp).seconds >= margin * 60:  # margin分経過しているjobは削除、指定エラーを投げる
+        if check_pass_time(queue_path, margin):
             clear_path(queue_path)
             result = True
 
     return result
+
+
+def tmp_movie_clear():
+    """delete movie file
+
+    delete oldest 1 movie file if its made 2 hours later
+
+    this function is intended as every query
+
+    Args:
+
+    Returns:
+
+
+    """
+    try:
+        fl = glob(ap.stream_dir + "/*")
+        if not fl:
+            return
+
+        fl.sort(key=lambda x: os.path.getctime(x))
+
+        if check_pass_time(fl[0], 7200):
+            clear_path(fl[0])
+
+    except FileNotFoundError:
+        pass
+
+
+def check_pass_time(file_path, thresh):
+    """check time
+
+    check file update time with current time
+
+
+    Args:
+        file_path (str): time as datetime
+        thresh (int): thresh value "seconds" for check
+
+    Returns:
+        True (boolean): passed time or file not found
+        False (boolean): not passed time
+
+
+    """
+    now = datetime.datetime.today()
+    try:
+        timestamp = datetime.datetime.fromtimestamp(int(os.path.getmtime(file_path)))
+    except FileNotFoundError:
+        return True
+
+    if (now - timestamp).total_seconds() >= thresh:
+        return True
+    else:
+        return False
 
 
 def clear_path(path):
